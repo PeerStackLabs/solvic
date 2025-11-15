@@ -1,295 +1,117 @@
-"""
-MCP Server - Main FastAPI Application
-Integrates ingestion, RAG, and LLM for question-answering
-"""
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
-from typing import Optional, Dict, List
-import uvicorn
-import logging
-from contextlib import asynccontextmanager
+import asyncio
+import chromadb
+from chromadb.config import Settings
+from pathlib import Path
+import json
+from mcp.server import Server
+from mcp.types import Tool, TextContent, CallToolResult
+from mcp.server.stdio import stdio_server
 
-from mcp.ingest import TranscriptIngestor
-from mcp.rag import RAGSystem
-from mcp.llm import LMStudioClient
+TRANSCRIPTS_DIR = Path(__file__).parent.parent / "data" / "transcripts"
+CHROMA_DB_PATH = Path(__file__).parent / "chroma_db"
 
-# Setup logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
-
-
-# Global instances
-transcript_ingestor: Optional[TranscriptIngestor] = None
-rag_system: Optional[RAGSystem] = None
-llm_client: Optional[LMStudioClient] = None
-
-
-# Pydantic models for API
-class AskRequest(BaseModel):
-    """Request model for /ask endpoint"""
-    question: str = Field(..., description="Question to ask about transcripts")
-    n_results: int = Field(5, description="Number of context chunks to retrieve", ge=1, le=20)
-    include_sources: bool = Field(True, description="Include source information in response")
-
-
-class AskResponse(BaseModel):
-    """Response model for /ask endpoint"""
-    answer: str = Field(..., description="Generated answer")
-    sources: Optional[List[Dict]] = Field(None, description="Source documents used")
-    context_used: Optional[str] = Field(None, description="Context provided to LLM")
-
-
-class IngestResponse(BaseModel):
-    """Response model for /ingest endpoint"""
-    message: str
-    new_documents_added: int
-    total_documents: int
-
-
-class StatusResponse(BaseModel):
-    """Response model for /status endpoint"""
-    status: str
-    total_documents: int
-    lm_studio_connected: bool
-    transcripts_directory: str
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Lifecycle manager for startup and shutdown"""
-    # Startup
-    logger.info("Starting MCP Server...")
-    
-    global transcript_ingestor, rag_system, llm_client
-    
-    # Initialize components
-    transcript_ingestor = TranscriptIngestor(
-        transcripts_dir="data/transcripts",
-        metadata_file="mcp/db/processed_files.json"
-    )
-    
-    rag_system = RAGSystem(
-        persist_directory="mcp/db/chroma",
-        collection_name="transcripts"
-    )
-    
-    llm_client = LMStudioClient(
-        base_url="http://localhost:1234/v1",
-        model="local-model"
-    )
-    
-    # Auto-ingest on startup
-    logger.info("Checking for new transcripts...")
-    try:
-        new_docs = transcript_ingestor.ingest_all_new_transcripts()
-        if new_docs:
-            added = rag_system.add_documents(new_docs)
-            logger.info(f"Auto-ingestion: Added {added} new document chunks")
-    except Exception as e:
-        logger.error(f"Error during auto-ingestion: {e}")
-    
-    # Test LM Studio connection
-    try:
-        if llm_client.test_connection():
-            logger.info("LM Studio connection successful")
-        else:
-            logger.warning("LM Studio connection failed - check if LM Studio is running")
-    except Exception as e:
-        logger.warning(f"Could not connect to LM Studio: {e}")
-    
-    logger.info("MCP Server ready!")
-    
-    yield
-    
-    # Shutdown
-    logger.info("Shutting down MCP Server...")
-
-
-# Create FastAPI app
-app = FastAPI(
-    title="ContextIQ MCP Server",
-    description="Local AI system for answering questions about meeting transcripts",
-    version="1.0.0",
-    lifespan=lifespan
-)
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-
-@app.get("/")
-async def root():
-    """Root endpoint"""
-    return {
-        "message": "ContextIQ MCP Server",
-        "version": "1.0.0",
-        "endpoints": {
-            "/ask": "Ask questions about transcripts",
-            "/ingest": "Manually trigger transcript ingestion",
-            "/status": "Get system status",
-            "/docs": "API documentation"
-        }
-    }
-
-
-@app.post("/ask", response_model=AskResponse)
-async def ask_question(request: AskRequest) -> AskResponse:
-    """
-    Ask a question about the transcripts
-    
-    This endpoint:
-    1. Retrieves relevant context chunks from the RAG system
-    2. Builds a prompt with the context
-    3. Sends to LM Studio for answer generation
-    4. Returns the answer with optional source information
-    """
-    try:
-        # Query RAG system for relevant context
-        logger.info(f"Query: {request.question}")
-        results = rag_system.query(
-            query_text=request.question,
-            n_results=request.n_results
+class TranscriptRAGServer:
+    def __init__(self):
+        self.client = chromadb.PersistentClient(
+            path=str(CHROMA_DB_PATH),
+            settings=Settings(anonymized_telemetry=False)
         )
-        
-        if not results["documents"]:
-            return AskResponse(
-                answer="I couldn't find any relevant information in the transcripts to answer your question.",
-                sources=[],
-                context_used=""
-            )
-        
-        # Build context from results
-        context = rag_system.build_context_from_results(results, max_chunks=request.n_results)
-        logger.info(f"Retrieved {len(results['documents'])} context chunks")
-        
-        # Generate answer using LLM
-        answer = llm_client.answer_with_context(
-            question=request.question,
-            context=context
-        )
-        
-        # Prepare sources if requested
-        sources = None
-        if request.include_sources:
-            sources = [
-                {
-                    "filename": meta.get("filename"),
-                    "date": meta.get("date"),
-                    "chunk_id": meta.get("chunk_id"),
-                    "relevance_score": 1 - dist  # Convert distance to similarity
-                }
-                for meta, dist in zip(results["metadatas"], results["distances"])
-            ]
-        
-        return AskResponse(
-            answer=answer,
-            sources=sources,
-            context_used=context if request.include_sources else None
-        )
-        
-    except Exception as e:
-        logger.error(f"Error in /ask endpoint: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        self.collection = None
+        self.initialized = False
 
-
-@app.post("/ingest", response_model=IngestResponse)
-async def ingest_transcripts() -> IngestResponse:
-    """
-    Manually trigger transcript ingestion
-    
-    Checks for new or modified transcripts and adds them to the database
-    """
-    try:
-        logger.info("Manual ingestion triggered")
+    def initialize_db(self):
+        if self.initialized:
+            return
         
-        # Ingest new transcripts
-        new_docs = transcript_ingestor.ingest_all_new_transcripts()
-        
-        # Add to RAG system
-        added = 0
-        if new_docs:
-            added = rag_system.add_documents(new_docs)
-        
-        # Get total count
-        stats = rag_system.get_collection_stats()
-        total = stats.get("total_documents", 0)
-        
-        return IngestResponse(
-            message=f"Ingestion complete. Added {added} new document chunks.",
-            new_documents_added=added,
-            total_documents=total
-        )
-        
-    except Exception as e:
-        logger.error(f"Error in /ingest endpoint: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
-
-
-@app.get("/status", response_model=StatusResponse)
-async def get_status() -> StatusResponse:
-    """
-    Get system status
-    
-    Returns information about the database, LM Studio connection, etc.
-    """
-    try:
-        # Get RAG stats
-        stats = rag_system.get_collection_stats()
-        
-        # Test LM Studio connection
-        lm_studio_ok = False
         try:
-            lm_studio_ok = llm_client.test_connection()
+            self.collection = self.client.get_collection("transcripts")
         except:
-            pass
+            self.collection = self.client.create_collection(
+                name="transcripts",
+                metadata={"hnsw:space": "cosine"}
+            )
+            self._load_transcripts()
         
-        return StatusResponse(
-            status="online",
-            total_documents=stats.get("total_documents", 0),
-            lm_studio_connected=lm_studio_ok,
-            transcripts_directory=str(transcript_ingestor.transcripts_dir)
+        self.initialized = True
+
+    def _load_transcripts(self):
+        if not TRANSCRIPTS_DIR.exists():
+            return
+
+        documents = []
+        metadatas = []
+        ids = []
+
+        for txt_file in TRANSCRIPTS_DIR.glob("*.txt"):
+            content = txt_file.read_text(encoding='utf-8')
+            chunks = self._chunk_text(content, chunk_size=1000, overlap=200)
+            
+            for idx, chunk in enumerate(chunks):
+                documents.append(chunk)
+                metadatas.append({
+                    "filename": txt_file.name,
+                    "chunk_id": idx
+                })
+                ids.append(f"{txt_file.stem}_chunk_{idx}")
+
+        if documents:
+            self.collection.add(
+                documents=documents,
+                metadatas=metadatas,
+                ids=ids
+            )
+
+    def _chunk_text(self, text, chunk_size=1000, overlap=200):
+        chunks = []
+        start = 0
+        text_length = len(text)
+        
+        while start < text_length:
+            end = start + chunk_size
+            chunk = text[start:end]
+            chunks.append(chunk)
+            start += chunk_size - overlap
+        
+        return chunks
+
+    def query(self, query_text, n_results=5):
+        if not self.initialized:
+            self.initialize_db()
+        
+        results = self.collection.query(
+            query_texts=[query_text],
+            n_results=n_results
         )
         
-    except Exception as e:
-        logger.error(f"Error in /status endpoint: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return results
 
+    def search_by_filename(self, filename, n_results=10):
+        if not self.initialized:
+            self.initialize_db()
+        
+        results = self.collection.get(
+            where={"filename": filename},
+            limit=n_results
+        )
+        
+        return results
 
-@app.get("/health")
-async def health_check():
-    """Simple health check endpoint"""
-    return {"status": "healthy"}
+async def main():
+    rag_server = TranscriptRAGServer()
+    server = Server("transcript-rag")
 
-
-# MCP Protocol Tools (for LM Studio MCP integration)
-@app.get("/tools")
-async def list_tools():
-    """
-    List available MCP tools for LM Studio integration
-    
-    This endpoint describes the capabilities that can be called via MCP
-    """
-    return {
-        "tools": [
-            {
-                "name": "search_transcripts",
-                "description": "Search meeting transcripts for relevant information",
-                "parameters": {
+    @server.list_tools()
+    async def list_tools():
+        return [
+            Tool(
+                name="query_transcripts",
+                description="Search through meeting transcripts using semantic search. Returns relevant chunks of text.",
+                inputSchema={
                     "type": "object",
                     "properties": {
                         "query": {
                             "type": "string",
-                            "description": "The search query or question"
+                            "description": "The search query to find relevant transcript content"
                         },
                         "n_results": {
                             "type": "integer",
@@ -299,75 +121,87 @@ async def list_tools():
                     },
                     "required": ["query"]
                 }
-            },
-            {
-                "name": "ask_about_transcripts",
-                "description": "Ask a question and get an AI-generated answer based on transcripts",
-                "parameters": {
+            ),
+            Tool(
+                name="get_transcript",
+                description="Retrieve chunks from a specific meeting transcript by filename.",
+                inputSchema={
                     "type": "object",
                     "properties": {
-                        "question": {
+                        "filename": {
                             "type": "string",
-                            "description": "The question to ask"
+                            "description": "The transcript filename (e.g., meeting1.txt)"
+                        },
+                        "n_results": {
+                            "type": "integer",
+                            "description": "Number of chunks to return (default: 10)",
+                            "default": 10
                         }
                     },
-                    "required": ["question"]
+                    "required": ["filename"]
                 }
-            }
+            ),
+            Tool(
+                name="reinitialize_db",
+                description="Reload all transcripts into the database. Use this if transcripts have been updated.",
+                inputSchema={
+                    "type": "object",
+                    "properties": {}
+                }
+            )
         ]
-    }
 
-
-@app.post("/tools/search_transcripts")
-async def search_transcripts_tool(query: str, n_results: int = 5):
-    """MCP tool: Search transcripts"""
-    try:
-        results = rag_system.query(query_text=query, n_results=n_results)
-        context = rag_system.build_context_from_results(results, max_chunks=n_results)
+    @server.call_tool()
+    async def call_tool(name: str, arguments: dict):
+        if name == "query_transcripts":
+            query = arguments.get("query")
+            n_results = arguments.get("n_results", 5)
+            
+            results = rag_server.query(query, n_results)
+            
+            response_text = f"Found {len(results['documents'][0])} relevant chunks:\n\n"
+            for i, (doc, metadata) in enumerate(zip(results['documents'][0], results['metadatas'][0])):
+                response_text += f"--- Result {i+1} (from {metadata['filename']}) ---\n{doc}\n\n"
+            
+            return CallToolResult(
+                content=[TextContent(type="text", text=response_text)]
+            )
         
-        return {
-            "success": True,
-            "context": context,
-            "num_results": len(results["documents"]),
-            "sources": [
-                {
-                    "filename": meta.get("filename"),
-                    "date": meta.get("date")
-                }
-                for meta in results["metadatas"]
-            ]
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-
-@app.post("/tools/ask_about_transcripts")
-async def ask_about_transcripts_tool(question: str):
-    """MCP tool: Ask question about transcripts"""
-    try:
-        # Use the ask endpoint logic
-        request = AskRequest(question=question, n_results=5, include_sources=True)
-        response = await ask_question(request)
+        elif name == "get_transcript":
+            filename = arguments.get("filename")
+            n_results = arguments.get("n_results", 10)
+            
+            results = rag_server.search_by_filename(filename, n_results)
+            
+            if not results['documents']:
+                return CallToolResult(
+                    content=[TextContent(type="text", text=f"No chunks found for {filename}")]
+                )
+            
+            response_text = f"Retrieved {len(results['documents'])} chunks from {filename}:\n\n"
+            for i, doc in enumerate(results['documents']):
+                response_text += f"--- Chunk {i+1} ---\n{doc}\n\n"
+            
+            return CallToolResult(
+                content=[TextContent(type="text", text=response_text)]
+            )
         
-        return {
-            "success": True,
-            "answer": response.answer,
-            "sources": response.sources
-        }
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+        elif name == "reinitialize_db":
+            rag_server.initialized = False
+            if rag_server.collection:
+                rag_server.client.delete_collection("transcripts")
+            rag_server.initialize_db()
+            
+            return CallToolResult(
+                content=[TextContent(type="text", text="Database reinitialized with all transcripts")]
+            )
+        
+        return CallToolResult(
+            content=[TextContent(type="text", text=f"Unknown tool: {name}")]
+        )
 
-
-def main():
-    """Run the server"""
-    uvicorn.run(
-        "mcp.server:app",
-        host="0.0.0.0",
-        port=8000,
-        reload=True,
-        log_level="info"
-    )
-
+    async with stdio_server() as (read_stream, write_stream):
+        await server.run(read_stream, write_stream, server.create_initialization_options())
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
