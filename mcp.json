@@ -1,0 +1,52 @@
+{
+  "name": "contextiq",
+  "version": "1.0.0",
+  "description": "Local AI system for answering questions about meeting transcripts",
+  "type": "server",
+  "url": "http://localhost:8000",
+  "tools": [
+    {
+      "name": "search_transcripts",
+      "description": "Search meeting transcripts and chat logs for relevant information. Returns context chunks with source metadata.",
+      "endpoint": "/tools/search_transcripts",
+      "parameters": {
+        "query": {
+          "type": "string",
+          "description": "The search query or question",
+          "required": true
+        },
+        "n_results": {
+          "type": "integer",
+          "description": "Number of relevant chunks to retrieve (default: 5)",
+          "required": false,
+          "default": 5
+        }
+      }
+    },
+    {
+      "name": "ask_about_transcripts",
+      "description": "Ask a natural language question and get an AI-generated answer based on meeting transcripts and chat logs. Uses RAG to retrieve relevant context and LLM to generate answer.",
+      "endpoint": "/tools/ask_about_transcripts",
+      "parameters": {
+        "question": {
+          "type": "string",
+          "description": "The question to ask about the transcripts",
+          "required": true
+        }
+      }
+    }
+  ],
+  "endpoints": {
+    "ask": "/ask",
+    "ingest": "/ingest",
+    "status": "/status",
+    "health": "/health",
+    "tools": "/tools"
+  },
+  "configuration": {
+    "base_url": "http://localhost:8000",
+    "api_version": "v1",
+    "embedding_model": "all-MiniLM-L6-v2",
+    "collection_name": "transcripts"
+  }
+}

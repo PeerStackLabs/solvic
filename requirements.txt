@@ -1,0 +1,23 @@
+# Core Dependencies
+fastapi==0.109.0
+uvicorn[standard]==0.27.0
+python-dotenv==1.0.0
+pydantic==2.5.3
+pydantic-settings==2.1.0
+
+# RAG & Embeddings
+chromadb==0.4.22
+sentence-transformers==2.3.1
+langchain==0.1.5
+langchain-community==0.0.16
+
+# LLM Integration (OpenAI-compatible for LM Studio)
+openai==1.10.0
+
+# Text Processing
+nltk==3.8.1
+tiktoken==0.5.2
+
+# Utilities
+requests==2.31.0
+aiofiles==23.2.1
