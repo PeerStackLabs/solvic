@@ -1,11 +1,11 @@
 """
-MCP Package - ContextIQ
+Solvic Package - ContextIQ
 Local AI system for answering questions about transcripts
 """
-from mcp.ingest import TranscriptIngestor, ingest_transcripts
-from mcp.rag import RAGSystem, create_rag_system, search_transcripts
-from mcp.llm import LMStudioClient, create_llm_client, ask_llm
-from mcp.config import settings, get_settings
+from solvic.ingest import TranscriptIngestor, ingest_transcripts
+from solvic.rag import RAGSystem, create_rag_system, search_transcripts
+from solvic.llm import LMStudioClient, create_llm_client, ask_llm
+from solvic.config import settings, get_settings
 
 __version__ = "1.0.0"
 __all__ = [
