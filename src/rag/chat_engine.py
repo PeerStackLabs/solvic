@@ -175,15 +175,28 @@ class MeetingChatEngine:
                 f"Redacted: {output_validation['redactions']}"
             )
         
+        # Calculate comprehensive risk score
+        risk_score = self._calculate_risk_score(
+            question,
+            output_validation['filtered_response'],
+            input_validation.get('risk_score', 0.0),
+            output_validation.get('redactions', []),
+            output_validation.get('blocked_content', False)
+        )
+        
+        # Calculate confidence with score details
+        confidence_data = self._calculate_confidence_with_score(relevant_chunks)
+        
         # Build final response
         final_response = {
             'answer': output_validation['filtered_response'],
             'sources': output_validation['filtered_sources'],
-            'confidence': self._estimate_confidence(relevant_chunks),
+            'confidence': confidence_data['level'],
+            'confidence_score': confidence_data['score'],
             'relevant_chunks': len(relevant_chunks),
             'warnings': all_warnings,
             'redactions': output_validation.get('redactions', []),
-            'risk_score': input_validation.get('risk_score', 0.0),
+            'risk_score': risk_score,
             'user': {
                 'name': user.name,
                 'department': user.department.value,
@@ -259,18 +272,129 @@ ANSWER:"""
         return list(sources.values())
     
     def _estimate_confidence(self, chunks: List[Dict]) -> str:
-        """Estimate confidence based on retrieval distances"""
+        """
+        Estimate confidence based on retrieval distances and result quality
+        
+        ChromaDB uses cosine distance: lower is better (0 = perfect match, 2 = opposite)
+        Typical ranges:
+        - 0.0 - 0.3: Excellent match
+        - 0.3 - 0.6: Good match  
+        - 0.6 - 1.0: Fair match
+        - 1.0+: Poor match
+        """
         if not chunks:
             return 'none'
         
+        # Calculate average distance (lower is better)
         avg_distance = sum(c['distance'] for c in chunks) / len(chunks)
         
-        if avg_distance < 0.3:
-            return 'high'
-        elif avg_distance < 0.5:
-            return 'medium'
+        # Get minimum distance (best match)
+        min_distance = min(c['distance'] for c in chunks)
+        
+        # Consider both average and best match for confidence
+        # Weight best match more heavily (60/40 split)
+        weighted_score = (min_distance * 0.6) + (avg_distance * 0.4)
+        
+        # More granular thresholds based on actual ChromaDB performance
+        if weighted_score <= 0.4:
+            return 'high'      # Excellent semantic match
+        elif weighted_score <= 0.7:
+            return 'medium'    # Good match with some uncertainty
+        elif weighted_score <= 1.0:
+            return 'low'       # Weak match, may not be relevant
         else:
-            return 'low'
+            return 'none'      # Very poor match, likely irrelevant
+    
+    def _calculate_confidence_with_score(self, chunks: List[Dict]) -> Dict:
+        """
+        Calculate confidence level and provide numeric score for display
+        
+        Returns dict with 'level' (high/medium/low/none) and 'score' (0-100)
+        """
+        if not chunks:
+            return {'level': 'none', 'score': 0}
+        
+        # Calculate distances
+        avg_distance = sum(c['distance'] for c in chunks) / len(chunks)
+        min_distance = min(c['distance'] for c in chunks)
+        weighted_score = (min_distance * 0.6) + (avg_distance * 0.4)
+        
+        # Convert distance to confidence percentage (inverse relationship)
+        # Distance 0.0 = 100% confidence, Distance 1.0+ = 0% confidence
+        confidence_percent = max(0, min(100, (1.0 - weighted_score) * 100))
+        
+        # Determine level
+        if weighted_score <= 0.4:
+            level = 'high'
+        elif weighted_score <= 0.7:
+            level = 'medium'
+        elif weighted_score <= 1.0:
+            level = 'low'
+        else:
+            level = 'none'
+        
+        return {
+            'level': level,
+            'score': round(confidence_percent, 1)
+        }
+    
+    def _calculate_risk_score(
+        self,
+        query: str,
+        response: str,
+        input_risk: float,
+        redactions: List[Dict],
+        blocked: bool
+    ) -> float:
+        """Calculate comprehensive risk score based on query and response"""
+        import re
+        
+        risk_score = input_risk
+        
+        # Critical: Content was blocked
+        if blocked:
+            return 1.0
+        
+        # High risk: Redactions occurred (increased weight)
+        if redactions:
+            risk_score += 0.5 * len(redactions)  # Increased from 0.3 to 0.5
+        
+        # Check for sensitive content in response (increased weight)
+        sensitive_patterns = {
+            'financial': r'\$\d{1,3}(,\d{3})*(\.\d{2})?',
+            'salary': r'salary|compensation|pay\s*grade|bonus',
+            'hr_sensitive': r'layoff|termination|firing|dismissed',
+            'confidential': r'confidential|proprietary|trade\s*secret|NDA',
+            'personal': r'password|credential|access\s*code',
+        }
+        
+        for pattern_name, pattern in sensitive_patterns.items():
+            if re.search(pattern, response, re.IGNORECASE):
+                risk_score += 0.25  # Increased from 0.15 to 0.25
+        
+        # Check for PII patterns still present (shouldn't happen after redaction) (increased weight)
+        pii_patterns = [
+            r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',  # Email
+            r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b',  # Phone
+            r'\b\d{3}-\d{2}-\d{4}\b',  # SSN
+        ]
+        
+        for pattern in pii_patterns:
+            if re.search(pattern, response):
+                risk_score += 0.4  # Increased from 0.25 to 0.4 - High risk if PII leaked through
+        
+        # Long responses with sensitive keywords
+        if len(response) > 1500:
+            sensitive_keywords = ['confidential', 'restricted', 'internal only', 'do not share']
+            if any(kw in response.lower() for kw in sensitive_keywords):
+                risk_score += 0.1
+        
+        # Warning indicators
+        if any(word in response.lower() for word in ['warning', 'caution', 'sensitive', 'restricted']):
+            risk_score += 0.05
+        
+        # Normalize to 0-100 percentage range
+        return min(round(risk_score * 100, 1), 100.0)
     
     def _audit_log(self, event_type: str, user: User, query: str, details: str):
         """Log security/audit events"""

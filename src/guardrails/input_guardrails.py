@@ -82,10 +82,10 @@ class InputGuardrails:
         """
         result = {
             'allowed': True,
-            'reason': '',
+            'reason': None,
             'sanitized_query': query,
             'warnings': [],
-            'risk_score': 0.0
+            'risk_score': 0.0  # Will be converted to percentage in chat_engine
         }
         
         # Check for blocked keywords

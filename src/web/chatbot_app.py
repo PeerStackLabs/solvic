@@ -273,17 +273,43 @@ if prompt := st.chat_input("Ask about your meetings..."):
                         'low': '🔴',
                         'none': '⚫'
                     }
-                    st.caption(f"Confidence: {confidence_emoji.get(response['confidence'], '⚫')} {response['confidence']}")
+                    confidence_score = response.get('confidence_score', 0)
+                    st.caption(f"Confidence: {confidence_emoji.get(response['confidence'], '⚫')} {response['confidence'].upper()} ({confidence_score}%)")
                 with col2:
                     st.caption(f"Sources: {len(response.get('sources', []))}")
                 with col3:
                     risk_score = response.get('risk_score', 0.0)
-                    risk_color = "🟢" if risk_score < 0.3 else "🟡" if risk_score < 0.7 else "🔴"
-                    st.caption(f"Risk: {risk_color} {risk_score:.2f}")
+                    if risk_score >= 70:
+                        risk_color = "🔴"
+                        risk_label = "HIGH"
+                    elif risk_score >= 40:
+                        risk_color = "🟡"
+                        risk_label = "MEDIUM"
+                    elif risk_score > 0:
+                        risk_color = "🟢"
+                        risk_label = "LOW"
+                    else:
+                        risk_color = "⚪"
+                        risk_label = "NONE"
+                    st.caption(f"Risk: {risk_color} {risk_label} ({risk_score:.1f}%)")
+                
+                # Show risk warning if applicable
+                if risk_score >= 70:
+                    st.error(f"🔴 **HIGH RISK ({risk_score:.1f}%)** - This response contains highly sensitive information. Verify access permissions before sharing.")
+                elif risk_score >= 40:
+                    st.warning(f"🟡 **MEDIUM RISK ({risk_score:.1f}%)** - This response may contain sensitive information. Use discretion when sharing.")
+                
+                # Show confidence warning if applicable
+                confidence_level = response.get('confidence', 'none')
+                confidence_score = response.get('confidence_score', 0)
+                if confidence_level == 'low':
+                    st.info(f"ℹ️ **Low Confidence ({confidence_score}%)** - The answer may not be fully accurate. Consider rephrasing your question or checking source documents.")
+                elif confidence_level == 'none':
+                    st.warning(f"⚠️ **Very Low Confidence ({confidence_score}%)** - Could not find relevant information. Try asking differently or check if the data exists.")
                 
                 # Display sources
                 if response['sources']:
-                    with st.expander("Sources"):
+                    with st.expander("📄 Sources"):
                         for source in response['sources']:
                             st.markdown(f"**{source['title']}** - {source['timestamp']}")
             
