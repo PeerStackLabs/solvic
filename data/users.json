@@ -7,9 +7,9 @@
       "department": "executive",
       "access_level": "admin",
       "additional_departments": [],
-      "created_at": "2025-11-16T06:43:26.066126",
-      "query_count": 8,
-      "last_query": "2025-11-16T06:46:02.607820"
+      "created_at": "2025-11-16T10:08:47.694933",
+      "query_count": 12,
+      "last_query": "2025-11-16T10:22:14.818132"
     },
     {
       "user_id": "eng_manager",
@@ -18,9 +18,9 @@
       "department": "engineering",
       "access_level": "manager",
       "additional_departments": [],
-      "created_at": "2025-11-16T06:43:26.066140",
-      "query_count": 1,
-      "last_query": "2025-11-16T06:23:04.920125"
+      "created_at": "2025-11-16T10:08:47.694945",
+      "query_count": 7,
+      "last_query": "2025-11-16T10:20:57.236838"
     },
     {
       "user_id": "sales_member",
@@ -29,7 +29,7 @@
       "department": "sales",
       "access_level": "member",
       "additional_departments": [],
-      "created_at": "2025-11-16T06:43:26.066144",
+      "created_at": "2025-11-16T10:08:47.694949",
       "query_count": 0,
       "last_query": null
     },
@@ -40,7 +40,7 @@
       "department": "hr",
       "access_level": "manager",
       "additional_departments": [],
-      "created_at": "2025-11-16T06:43:26.066147",
+      "created_at": "2025-11-16T10:08:47.694951",
       "query_count": 0,
       "last_query": null
     }

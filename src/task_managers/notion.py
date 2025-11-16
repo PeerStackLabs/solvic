@@ -68,54 +68,52 @@ class NotionTaskManager(TaskManager):
         """Create a task (page) in Notion database"""
 
         try:
-            # Build page properties
+            # Build page properties with correct column mapping:
+            # Name = Task description (the actual task) - this is the TITLE
+            # notes = Additional notes - rich_text
+            # due date = Due date
+            # status = Task status
+            
             properties = {
-                "Name": {
+                "Name": {  # Task description - this is the title column
                     "title": [
                         {
                             "text": {
-                                "content": task.name
+                                "content": task.name[:2000]  # Notion title limit
                             }
                         }
                     ]
                 }
             }
 
-            # Add due date if valid
-            if task.due_date:
-                try:
-                    # Validate date format
-                    datetime.strptime(task.due_date, "%Y-%m-%d")
-                    properties["Due Date"] = {
-                        "date": {
-                            "start": task.due_date
-                        }
-                    }
-                except ValueError:
-                    # Invalid date - add to notes instead
-                    if task.notes:
-                        task.notes = f"Due: {task.due_date}\n\n{task.notes}"
-                    else:
-                        task.notes = f"Due: {task.due_date}"
-
-            # Add notes if provided
-            if task.notes:
-                properties["Notes"] = {
+            # Add additional notes if provided
+            # Include due date in notes if it exists since the column has naming issues
+            notes_content = task.notes or ""
+            if task.due_date and not notes_content:
+                notes_content = f"Due: {task.due_date}"
+            elif task.due_date and notes_content:
+                notes_content = f"Due: {task.due_date}\n\n{notes_content}"
+            
+            if notes_content:
+                properties["notes"] = {
                     "rich_text": [
                         {
                             "text": {
-                                "content": task.notes[:2000]  # Notion limit
+                                "content": notes_content[:2000]
                             }
                         }
                     ]
                 }
 
-            # Add status (default to Todo)
-            properties["Status"] = {
-                "select": {
-                    "name": "Todo"
+            # Add status using the status type
+            try:
+                properties["status"] = {
+                    "status": {
+                        "name": "Not started"
+                    }
                 }
-            }
+            except:
+                pass
 
             # Create page in database
             response = self.client.pages.create(

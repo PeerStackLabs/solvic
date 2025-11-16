@@ -122,7 +122,17 @@ with st.sidebar:
                 
                 if source:
                     # Fetch transcripts
-                    transcripts = source.fetch_transcripts(hours=hours)
+                    transcript_objects = source.get_recent_transcripts(hours=hours)
+                    
+                    # Convert Transcript objects to dicts for chat engine
+                    transcripts = []
+                    for t in transcript_objects:
+                        transcripts.append({
+                            'title': t.name,
+                            'content': t.text,
+                            'timestamp': t.modified_time or datetime.now().isoformat(),
+                            'source': t.source
+                        })
                     
                     # Index them
                     stats = st.session_state.chat_engine.index_multiple_transcripts(transcripts)
@@ -149,6 +159,35 @@ with st.sidebar:
         st.metric("Chunks", stats['total_chunks'])
     
     st.metric("Your Questions", user.query_count)
+    
+    # Task Creation
+    st.divider()
+    st.header("✅ Create Task")
+    
+    with st.form("create_task_form"):
+        task_name = st.text_input("Task Description*", placeholder="e.g., Follow up with client about proposal")
+        assignee = st.text_input("Assign To", placeholder="e.g., John Doe")
+        due_date = st.date_input("Due Date", value=None)
+        notes = st.text_area("Notes", placeholder="Additional details...")
+        
+        submit_task = st.form_submit_button("Create Task", type="primary")
+        
+        if submit_task:
+            if not task_name:
+                st.error("Please enter a task description")
+            else:
+                with st.spinner("Creating task..."):
+                    result = st.session_state.chat_engine.create_task(
+                        task_name=task_name,
+                        assignee=assignee if assignee else None,
+                        due_date=due_date.strftime("%Y-%m-%d") if due_date else None,
+                        notes=notes if notes else None
+                    )
+                    
+                    if result['success']:
+                        st.success(result['message'])
+                    else:
+                        st.error(result['message'])
     
     # Admin features
     if user.access_level == AccessLevel.ADMIN:

@@ -15,6 +15,7 @@ from rag.vector_store import TranscriptVectorStore
 from guardrails.input_guardrails import InputGuardrails, Department, AccessLevel
 from guardrails.output_guardrails import OutputGuardrails
 from guardrails.user_manager import UserManager, User
+from task_managers.notion import NotionTaskManager
 
 class MeetingChatEngine:
     def __init__(self, config_path: str = "config.yml"):
@@ -25,6 +26,11 @@ class MeetingChatEngine:
         # Initialize components
         self.llm = GeminiProvider(self.config['llm_provider'])
         self.vector_store = TranscriptVectorStore()
+        
+        # Initialize task manager if configured
+        self.task_manager = None
+        if 'task_manager' in self.config and self.config['task_manager']['type'] == 'notion':
+            self.task_manager = NotionTaskManager(self.config['task_manager'])
         
         # Initialize guardrails
         self.input_guardrails = InputGuardrails()
@@ -314,3 +320,60 @@ ANSWER:"""
             **self.vector_store.get_stats(),
             'conversation_turns': len(self.conversation_history)
         }
+    
+    def create_task(self, task_name: str, assignee: str = None, due_date: str = None, notes: str = None) -> Dict:
+        """
+        Create a task in Notion
+        
+        Args:
+            task_name: Task description
+            assignee: Person to assign the task to
+            due_date: Due date in YYYY-MM-DD format
+            notes: Additional task notes
+        
+        Returns:
+            Dict with success status and message
+        """
+        if not self.task_manager:
+            return {
+                'success': False,
+                'message': 'Task manager not configured. Please set up Notion integration in config.yml'
+            }
+        
+        try:
+            from dataclasses import dataclass
+            from datetime import datetime as dt
+            
+            # Create a simple task object
+            @dataclass
+            class Task:
+                name: str
+                notes: str = ""
+                due_date: str = None
+            
+            # Build notes field with assignee
+            task_notes = ""
+            if assignee:
+                task_notes = f"Assigned to: {assignee}\n\n"
+            if notes:
+                task_notes += notes
+            if due_date:
+                task_notes += f"\n\nDue: {due_date}"
+            
+            task = Task(
+                name=task_name,
+                notes=task_notes.strip(),
+                due_date=due_date
+            )
+            
+            self.task_manager.create_task(task)
+            
+            return {
+                'success': True,
+                'message': f'✅ Task created: {task_name}'
+            }
+        except Exception as e:
+            return {
+                'success': False,
+                'message': f'❌ Failed to create task: {str(e)}'
+            }

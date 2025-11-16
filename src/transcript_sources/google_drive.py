@@ -132,10 +132,10 @@ class GoogleDriveSource(TranscriptSource):
         # Calculate time threshold
         time_threshold = (datetime.utcnow() - timedelta(hours=hours)).isoformat() + 'Z'
 
-        # Look for Google Docs (transcripts) in the folder
+        # Look for Google Docs and text files (transcripts) in the folder
         query = (
             f"'{folder_id}' in parents and "
-            f"mimeType='application/vnd.google-apps.document' and "
+            f"(mimeType='application/vnd.google-apps.document' or mimeType='text/plain') and "
             f"modifiedTime > '{time_threshold}' and "
             f"trashed=false"
         )
@@ -143,7 +143,7 @@ class GoogleDriveSource(TranscriptSource):
         results = service.files().list(
             q=query,
             spaces='drive',
-            fields='files(id, name, modifiedTime)',
+            fields='files(id, name, modifiedTime, mimeType)',
             orderBy='modifiedTime desc'
         ).execute()
 
@@ -153,7 +153,7 @@ class GoogleDriveSource(TranscriptSource):
         for file in files:
             try:
                 # Download transcript text
-                text = self._download_transcript(service, file['id'])
+                text = self._download_transcript(service, file['id'], file.get('mimeType'))
 
                 transcript = Transcript(
                     id=f"{account_label}:{file['id']}",
@@ -169,12 +169,18 @@ class GoogleDriveSource(TranscriptSource):
 
         return transcripts
 
-    def _download_transcript(self, service, file_id: str) -> str:
-        """Download a Google Doc as plain text"""
-        request = service.files().export_media(
-            fileId=file_id,
-            mimeType='text/plain'
-        )
+    def _download_transcript(self, service, file_id: str, mime_type: str = None) -> str:
+        """Download a Google Doc or text file as plain text"""
+        
+        if mime_type == 'text/plain':
+            # Download plain text file directly
+            request = service.files().get_media(fileId=file_id)
+        else:
+            # Export Google Doc as plain text
+            request = service.files().export_media(
+                fileId=file_id,
+                mimeType='text/plain'
+            )
 
         fh = io.BytesIO()
         downloader = MediaIoBaseDownload(fh, request)
