@@ -1,47 +1,46 @@
-*.pyc
+# Sensitive configuration and credentials
+config.yml
+client_secret*.json
+*.pickle
+*token*.json
+credentials.txt
+.env
+
+# Generated/working files
+processed_transcripts.json
+*.log
+transcripts/
+
+# Python
 __pycache__/
 *.py[cod]
 *$py.class
-
-# Virtual Environment
+*.so
+.Python
 venv/
-env/
 ENV/
+env/
 .venv
 
-# Environment variables
-.env
-
-# Database
-mcp/db/chroma/
-mcp/db/*.json
-*.db
-*.sqlite
-
-# IDE
+# IDEs
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
 
-# OS
+# macOS
 .DS_Store
-Thumbs.db
-
-# Logs
-*.log
-logs/
+.AppleDouble
+.LSOverride
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
 
-# Distribution
+# Distribution / packaging
 dist/
 build/
 *.egg-info/
-
-#transcripts 
-/data 
+launch-content/

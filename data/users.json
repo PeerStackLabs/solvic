@@ -1,0 +1,48 @@
+{
+  "users": [
+    {
+      "user_id": "admin",
+      "name": "Admin User",
+      "email": "admin@company.com",
+      "department": "executive",
+      "access_level": "admin",
+      "additional_departments": [],
+      "created_at": "2025-11-16T06:43:26.066126",
+      "query_count": 8,
+      "last_query": "2025-11-16T06:46:02.607820"
+    },
+    {
+      "user_id": "eng_manager",
+      "name": "Engineering Manager",
+      "email": "eng.manager@company.com",
+      "department": "engineering",
+      "access_level": "manager",
+      "additional_departments": [],
+      "created_at": "2025-11-16T06:43:26.066140",
+      "query_count": 1,
+      "last_query": "2025-11-16T06:23:04.920125"
+    },
+    {
+      "user_id": "sales_member",
+      "name": "Sales Member",
+      "email": "sales@company.com",
+      "department": "sales",
+      "access_level": "member",
+      "additional_departments": [],
+      "created_at": "2025-11-16T06:43:26.066144",
+      "query_count": 0,
+      "last_query": null
+    },
+    {
+      "user_id": "hr_manager",
+      "name": "HR Manager",
+      "email": "hr@company.com",
+      "department": "hr",
+      "access_level": "manager",
+      "additional_departments": [],
+      "created_at": "2025-11-16T06:43:26.066147",
+      "query_count": 0,
+      "last_query": null
+    }
+  ]
+}
