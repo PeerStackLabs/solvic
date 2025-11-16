@@ -355,11 +355,11 @@ ANSWER:"""
         if blocked:
             return 1.0
         
-        # High risk: Redactions occurred (increased weight)
+        # High risk: Redactions occurred
         if redactions:
-            risk_score += 0.5 * len(redactions)  # Increased from 0.3 to 0.5
+            risk_score += 0.3 * len(redactions)
         
-        # Check for sensitive content in response (increased weight)
+        # Check for sensitive content in response
         sensitive_patterns = {
             'financial': r'\$\d{1,3}(,\d{3})*(\.\d{2})?',
             'salary': r'salary|compensation|pay\s*grade|bonus',
@@ -370,9 +370,9 @@ ANSWER:"""
         
         for pattern_name, pattern in sensitive_patterns.items():
             if re.search(pattern, response, re.IGNORECASE):
-                risk_score += 0.25  # Increased from 0.15 to 0.25
+                risk_score += 0.15
         
-        # Check for PII patterns still present (shouldn't happen after redaction) (increased weight)
+        # Check for PII patterns still present (shouldn't happen after redaction)
         pii_patterns = [
             r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b',  # Email
             r'\b\d{3}[-.]?\d{3}[-.]?\d{4}\b',  # Phone
@@ -381,7 +381,7 @@ ANSWER:"""
         
         for pattern in pii_patterns:
             if re.search(pattern, response):
-                risk_score += 0.4  # Increased from 0.25 to 0.4 - High risk if PII leaked through
+                risk_score += 0.25  # High risk if PII leaked through
         
         # Long responses with sensitive keywords
         if len(response) > 1500:
@@ -393,8 +393,8 @@ ANSWER:"""
         if any(word in response.lower() for word in ['warning', 'caution', 'sensitive', 'restricted']):
             risk_score += 0.05
         
-        # Normalize to 0-100 percentage range
-        return min(round(risk_score * 100, 1), 100.0)
+        # Normalize to 0-1 range
+        return min(risk_score, 1.0)
     
     def _audit_log(self, event_type: str, user: User, query: str, details: str):
         """Log security/audit events"""

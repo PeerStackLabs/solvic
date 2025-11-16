@@ -279,10 +279,10 @@ if prompt := st.chat_input("Ask about your meetings..."):
                     st.caption(f"Sources: {len(response.get('sources', []))}")
                 with col3:
                     risk_score = response.get('risk_score', 0.0)
-                    if risk_score >= 70:
+                    if risk_score >= 0.7:
                         risk_color = "🔴"
                         risk_label = "HIGH"
-                    elif risk_score >= 40:
+                    elif risk_score >= 0.4:
                         risk_color = "🟡"
                         risk_label = "MEDIUM"
                     elif risk_score > 0:
@@ -291,13 +291,13 @@ if prompt := st.chat_input("Ask about your meetings..."):
                     else:
                         risk_color = "⚪"
                         risk_label = "NONE"
-                    st.caption(f"Risk: {risk_color} {risk_label} ({risk_score:.1f}%)")
+                    st.caption(f"Risk: {risk_color} {risk_label} ({risk_score:.2f})")
                 
                 # Show risk warning if applicable
-                if risk_score >= 70:
-                    st.error(f"🔴 **HIGH RISK ({risk_score:.1f}%)** - This response contains highly sensitive information. Verify access permissions before sharing.")
-                elif risk_score >= 40:
-                    st.warning(f"🟡 **MEDIUM RISK ({risk_score:.1f}%)** - This response may contain sensitive information. Use discretion when sharing.")
+                if risk_score >= 0.7:
+                    st.error(f"🔴 **HIGH RISK** - This response contains highly sensitive information. Verify access permissions before sharing.")
+                elif risk_score >= 0.4:
+                    st.warning(f"🟡 **MEDIUM RISK** - This response may contain sensitive information. Use discretion when sharing.")
                 
                 # Show confidence warning if applicable
                 confidence_level = response.get('confidence', 'none')
