@@ -19,7 +19,7 @@ from src.transcript_sources.slack import SlackSource
 # Page config
 st.set_page_config(
     page_title="Meeting Assistant",
-    page_icon="🤖",
+    page_icon="",
     layout="wide"
 )
 
@@ -41,7 +41,7 @@ if 'current_user' not in st.session_state:
 
 # Login section
 if not st.session_state.current_user:
-    st.title("🔐 Login to Meeting Assistant")
+    st.title("Login to Meeting Assistant")
     
     col1, col2 = st.columns([1, 2])
     
@@ -59,7 +59,7 @@ if not st.session_state.current_user:
     
     with col2:
         st.info("""
-        ### 📋 Test Users
+        ### Test Users
         
         **Admin Access:**
         - User ID: `admin`
@@ -85,10 +85,10 @@ user = st.session_state.current_user
 
 # Sidebar
 with st.sidebar:
-    st.title(f"👤 {user.name}")
+    st.title(f"{user.name}")
     st.caption(f"**{user.department.value.title()}** | {user.access_level.value.title()}")
     
-    if st.button("🚪 Logout"):
+    if st.button("Logout"):
         st.session_state.current_user = None
         st.session_state.messages = []
         st.rerun()
@@ -96,11 +96,11 @@ with st.sidebar:
     st.divider()
     
     # Index Management
-    st.header("📚 Index Transcripts")
+    st.header("Index Transcripts")
     
     hours = st.number_input("Hours to look back", min_value=1, max_value=720, value=168)
     
-    if st.button("🔄 Index New Transcripts", type="primary"):
+    if st.button("Index New Transcripts", type="primary"):
         with st.spinner("Indexing transcripts..."):
             try:
                 # Load config
@@ -127,11 +127,11 @@ with st.sidebar:
                     # Index them
                     stats = st.session_state.chat_engine.index_multiple_transcripts(transcripts)
                     
-                    st.success(f"✅ Indexed {stats['added']} new transcripts")
+                    st.success(f"Indexed {stats['added']} new transcripts")
                     if stats['skipped'] > 0:
-                        st.info(f"⏭️ Skipped {stats['skipped']} duplicates")
+                        st.info(f"Skipped {stats['skipped']} duplicates")
                     if stats['errors'] > 0:
-                        st.warning(f"⚠️ {stats['errors']} errors")
+                        st.warning(f"{stats['errors']} errors")
                     
                     st.session_state.indexed = True
                     
@@ -139,7 +139,7 @@ with st.sidebar:
                 st.error(f"Error: {str(e)}")
     
     # Stats
-    st.header("📊 Statistics")
+    st.header("Statistics")
     stats = st.session_state.chat_engine.get_stats()
     
     col1, col2 = st.columns(2)
@@ -155,7 +155,7 @@ with st.sidebar:
         st.divider()
         st.header("🔧 Admin")
         
-        if st.button("📋 View Audit Logs"):
+        if st.button(" View Audit Logs"):
             st.session_state.show_audit = True
         
         user_stats = st.session_state.user_manager.get_stats()
@@ -163,13 +163,13 @@ with st.sidebar:
         st.metric("Total Queries", user_stats['total_queries'])
     
     # Clear chat
-    if st.button("🗑️ Clear Chat History"):
+    if st.button("Clear Chat History"):
         st.session_state.messages = []
         st.session_state.chat_engine.clear_history()
         st.rerun()
 
 # Main area
-st.title("🤖 Meeting Assistant")
+st.title("Meeting Assistant")
 st.caption(f"Ask questions about your meeting transcripts | {user.access_level.value.title()} Access")
 
 # Display chat messages
@@ -186,11 +186,11 @@ for message in st.session_state.messages:
             
             # Redactions
             if message.get("redactions"):
-                st.info(f"🔒 {len(message['redactions'])} item(s) redacted for your access level")
+                st.info(f" {len(message['redactions'])} item(s) redacted for your access level")
             
             # Sources
             if message.get("sources"):
-                with st.expander("📄 Sources"):
+                with st.expander("Sources"):
                     for source in message["sources"]:
                         st.markdown(f"**{source['title']}** - {source['timestamp']}")
 
@@ -223,7 +223,7 @@ if prompt := st.chat_input("Ask about your meetings..."):
                 
                 # Display redactions
                 if response.get('redactions'):
-                    st.info(f"🔒 {len(response['redactions'])} item(s) redacted for your access level")
+                    st.info(f"{len(response['redactions'])} item(s) redacted for your access level")
                 
                 # Display metadata
                 col1, col2, col3 = st.columns(3)
@@ -244,7 +244,7 @@ if prompt := st.chat_input("Ask about your meetings..."):
                 
                 # Display sources
                 if response['sources']:
-                    with st.expander("📄 Sources"):
+                    with st.expander("Sources"):
                         for source in response['sources']:
                             st.markdown(f"**{source['title']}** - {source['timestamp']}")
             
@@ -261,7 +261,7 @@ if prompt := st.chat_input("Ask about your meetings..."):
 
 # Example questions
 if not st.session_state.messages and st.session_state.indexed:
-    st.info("💡 **Example questions:**")
+    st.info("**Example questions:**")
     
     examples = [
         "What were the main action items from last week's meetings?",
@@ -280,12 +280,12 @@ if not st.session_state.messages and st.session_state.indexed:
 
 # First time user
 if not st.session_state.indexed:
-    st.warning("👈 Please index your transcripts first using the sidebar")
+    st.warning("Please index your transcripts first using the sidebar")
 
 # Show audit logs (admin only)
 if user.access_level == AccessLevel.ADMIN and st.session_state.get('show_audit'):
     st.divider()
-    st.header("📋 Audit Logs")
+    st.header("Audit Logs")
     
     logs = st.session_state.chat_engine.get_audit_logs(limit=50)
     
